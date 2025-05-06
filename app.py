@@ -235,7 +235,7 @@ def generate_conversation_summary(history):
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=messages,
             max_tokens=250
         )
@@ -252,7 +252,7 @@ def generate_personalized_exercises(topic, difficulty):
     
     try:
         messages = [
-            {"role": "system", content": f"""You are a Spanish grammar tutor specializing in {topic}. 
+            {"role": "system", "content": f"""You are a Spanish grammar tutor specializing in {topic}. 
             Create {3} personalized practice exercises at {difficulty} difficulty level. 
             Format the response as a JSON array with 'question' and 'answer' keys."""},
             {"role": "user", "content": f"Generate {difficulty} level exercises for {topic}"}
@@ -260,7 +260,7 @@ def generate_personalized_exercises(topic, difficulty):
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo-instruct",  # Try this model instead
             messages=messages,
             max_tokens=500
         )
@@ -281,7 +281,16 @@ def generate_personalized_exercises(topic, difficulty):
 
 # Function to get AI grammar tutor response
 def ai_grammar_tutor(question, history):
+    global API_CALLS_REMAINING
     try:
+        if API_CALLS_REMAINING <= 0:
+            # Use the predefined content instead
+            response_text = get_predefined_response(question)
+            if response_text:
+                return response_text
+            else:
+                return "I apologize, but we've reached our API quota limit. Here's some helpful content from our study guide instead: [content from study guide]"
+                
         # Format the history for context
         formatted_history = []
         for entry in history:
@@ -327,7 +336,7 @@ def analyze_errors(student_text):
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=messages,
             max_tokens=500
         )
@@ -355,7 +364,7 @@ def translate_text(text, direction):
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-3.5-turbo",
             messages=messages,
             max_tokens=500
         )
@@ -390,6 +399,7 @@ def process_exercises(exercises_dict):
 with gr.Blocks(theme=gr.themes.Soft()) as interface:
     # Session state for conversation history
     conversation_history = gr.State([])
+    topic_state = gr.State("Imperative")  # Add this line to store the selected topic
     
     # Header
     gr.Markdown("# 🇪🇸 Spanish Grammar AI Tutor 📚")
@@ -482,7 +492,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
         with gr.Tab("🤖 AI Tutor"):
             with gr.Row():
                 with gr.Column(scale=3):
-                    chatbot = gr.Chatbot(label="Conversation with Spanish Tutor")
+                    chatbot = gr.Chatbot(label="Conversation with Spanish Tutor", type="messages")
                 
                 with gr.Column(scale=1):
                     session_info = gr.Markdown("""
@@ -581,7 +591,10 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
     
     # Event handlers
     def update_topic_info(topic):
+        """Update the display with information about the selected topic"""
+        print(f"Updating topic info for: {topic}")
         if topic in STUDY_GUIDE:
+            print(f"Found topic {topic} in study guide")
             title = f"## {STUDY_GUIDE[topic]['title']}"
             explanation = STUDY_GUIDE[topic]['explanation']
             examples = "### Examples\n" + "\n".join([f"- {ex}" for ex in STUDY_GUIDE[topic]['examples']])
@@ -593,6 +606,8 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
                 practice_md += f"   Answer: {ex['answer']}\n\n"
             
             return title, explanation, examples, practice_md
+        else:
+            print(f"Topic {topic} not found in study guide")
         return "## Topic Not Found", "Please select a valid topic.", "### No examples available", ""
     
     def update_quiz_question(topic):
@@ -653,6 +668,11 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
     
     def generate_vocabulary(topic, level):
         try:
+            # Check API quota
+            global API_CALLS_REMAINING
+            if API_CALLS_REMAINING <= 0:
+                return [["API quota exceeded", "Please try again later", "Using pre-defined content instead"]]
+                
             messages = [
                 {"role": "system", "content": f"""You are a Spanish vocabulary builder. 
                 Create a list of 10 useful {level} level Spanish vocabulary words related to '{topic}'.
@@ -663,7 +683,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
             
             client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-3.5-turbo",
                 messages=messages,
                 max_tokens=800
             )
@@ -682,10 +702,23 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
             df_data = [[item["spanish"], item["english"], item["example"]] for item in vocab_list]
             return df_data
         except Exception as e:
-            return [["Error", f"Error generating vocabulary: {str(e)}", ""]]
+            # Return some default vocabulary for common topics
+            default_vocab = {
+                "food": [["el pan", "bread", "Me gusta comer pan."], 
+                        ["la manzana", "apple", "La manzana es roja."]],
+                "travel": [["el hotel", "hotel", "Me quedo en un hotel."], 
+                          ["el pasaporte", "passport", "Necesito mi pasaporte."]]
+            }
+            
+            return default_vocab.get(topic.lower(), [["Error", str(e), "Try a different topic"]])
     
     def get_custom_exercises(topic, level):
         try:
+            # Check if API calls are still available
+            global API_CALLS_REMAINING
+            if API_CALLS_REMAINING <= 0:
+                raise Exception("API quota exceeded")
+                
             exercises = generate_personalized_exercises(topic, level)
             # Format exercises as Markdown
             exercises_md = "### Custom Practice Exercises\n\n"
@@ -743,13 +776,23 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
             return "", "", ""
     
     # Connect event handlers
-    topic_dropdown.change(update_topic_info, inputs=topic_dropdown, outputs=[title_output, explanation_output, examples_output, practice_output])
-    
-    quiz_topic.change(update_quiz_question, inputs=quiz_topic, outputs=[quiz_question, quiz_feedback])
-    quiz_btn.click(update_quiz_question, inputs=quiz_topic, outputs=[quiz_question, quiz_feedback])
-    check_answer_btn.click(check_quiz_answer, inputs=[quiz_topic, quiz_answer_input, quiz_question], outputs=quiz_feedback)
-    quiz_answer_input.submit(check_quiz_answer, inputs=[quiz_topic, quiz_answer_input, quiz_question], outputs=quiz_feedback)
-    
+    quiz_btn.click(
+        fn=lambda t: update_quiz_question(t),
+        inputs=quiz_topic_state,
+        outputs=[quiz_question, quiz_feedback]
+    )
+
+    check_answer_btn.click(
+        fn=check_quiz_answer,
+        inputs=[quiz_topic_state, quiz_answer_input, quiz_question],
+        outputs=quiz_feedback
+    )
+    quiz_answer_input.submit(
+        fn=check_quiz_answer,
+        inputs=[quiz_topic_state, quiz_answer_input, quiz_question],
+        outputs=quiz_feedback
+    )
+
     submit_btn.click(handle_chat_submit, inputs=[user_input, chatbot, conversation_history], outputs=[user_input, chatbot, conversation_history])
     user_input.submit(handle_chat_submit, inputs=[user_input, chatbot, conversation_history], outputs=[user_input, chatbot, conversation_history])
     clear_btn.click(clear_chat_history, outputs=[chatbot, conversation_history])
@@ -762,13 +805,29 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
     
     vocab_btn.click(generate_vocabulary, inputs=[vocab_topic, vocab_level], outputs=vocab_output)
     
-    generate_practice_btn.click(get_custom_exercises, inputs=[topic_dropdown, practice_level], outputs=custom_practice_output)
-    
-    # Connect each topic button to update the content
+    # Remove this line:
+    # topic_dropdown.change(update_topic_info, inputs=topic_dropdown, outputs=[title_output, explanation_output, examples_output, practice_output])
+
+    # Also fix the generate_practice_btn click handler:
+    # Change this:
+    # generate_practice_btn.click(get_custom_exercises, inputs=[topic_dropdown, practice_level], outputs=custom_practice_output)
+
+    # To this (using State to store current topic):
+    topic_state = gr.State("Imperative")  # Default topic
+    generate_practice_btn.click(get_custom_exercises, inputs=[topic_state, practice_level], outputs=custom_practice_output)
+
+    # And modify your button click handlers to update the state:
     for topic, button in topic_buttons.items():
+        # Create custom function for this specific topic
+        def make_click_handler(t):
+            def click_handler():
+                return update_topic_info(t), t
+            return click_handler
+        
+        # Connect the button to both update content and state
         button.click(
-            fn=lambda t=topic: update_topic_info(t),
-            outputs=[title_output, explanation_output, examples_output, practice_output]
+            fn=make_click_handler(topic),
+            outputs=[title_output, explanation_output, examples_output, practice_output, topic_state]
         )
     
     # Connect quiz topic buttons
@@ -874,6 +933,19 @@ def show_guide(topic):
                               practice=guide_content["practice"])
     else:
         return "Topic not found", 404
+
+# New function to provide predefined responses
+def get_predefined_response(question):
+    # Check if the question matches any keywords
+    question_lower = question.lower()
+    
+    if "imperativo" in question_lower or "command" in question_lower:
+        return STUDY_GUIDE["Imperative"]["explanation"]
+    elif "subjuntivo" in question_lower or "subjunctive" in question_lower:
+        return STUDY_GUIDE["Subjunctive"]["explanation"]
+    # Add more matches here
+    
+    return None  # No match found, will fall back to API or default message
 
 if __name__ == "__main__":
     # Launch Gradio in a separate thread
