@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 import gc
 from openai import OpenAI
 from flask import Flask, request, jsonify, render_template
+from typing import Optional
+
 app = Flask(__name__, 
             template_folder='templates')  # Explicitly set the template folder
 
@@ -315,19 +317,42 @@ def generate_personalized_exercises(topic, difficulty):
     except Exception as e:
         return [{"question": f"Error: {str(e)}", "answer": "N/A"}]
 
+# Add at the top of your file
+RESPONSE_CACHE = {}
+
 # Function to get AI grammar tutor response
 def ai_grammar_tutor(question, history):
+    # Check cache first
+    cache_key = question.lower().strip()
+    if cache_key in RESPONSE_CACHE:
+        print("Using cached response")
+        return RESPONSE_CACHE[cache_key]
+    
     global API_CALLS_REMAINING
+    
     try:
+        # First check if we should use predefined content
         if API_CALLS_REMAINING <= 0:
-            # Use the predefined content instead
+            # Try the free Hugging Face API first
+            prompt = f"""You are a Spanish grammar tutor. Please answer the following question about Spanish grammar.
+            
+            Question: {question}
+            
+            Provide a clear explanation with examples."""
+            
+            hf_response = get_huggingface_response(prompt)
+            
+            if hf_response:
+                return f"[Using free API alternative] \n\n{hf_response}"
+            
+            # If Hugging Face fails, use the predefined content
             response_text = get_predefined_response(question)
             if response_text:
-                return response_text
+                return f"[Using predefined content] \n\n{response_text}"
             else:
                 return "I apologize, but we've reached our API quota limit. Here's some helpful content from our study guide instead: [content from study guide]"
-                
-        # Format the history for context
+        
+        # Original OpenAI API call code...
         formatted_history = []
         for entry in history:
             formatted_history.append({"role": "user", "content": entry[0]})
@@ -354,9 +379,31 @@ def ai_grammar_tutor(question, history):
         )
         
         content = response.choices[0].message.content
+        API_CALLS_REMAINING -= 1
+        
+        # Cache the response before returning
+        if content:
+            RESPONSE_CACHE[cache_key] = content
+            # Keep cache size manageable
+            if len(RESPONSE_CACHE) > 100:
+                # Remove oldest items
+                for _ in range(10):
+                    RESPONSE_CACHE.pop(next(iter(RESPONSE_CACHE)))
         
         return content
     except Exception as e:
+        # Try the free Hugging Face API as backup
+        prompt = f"""You are a Spanish grammar tutor. Please answer the following question about Spanish grammar.
+        
+        Question: {question}
+        
+        Provide a clear explanation with examples."""
+        
+        hf_response = get_huggingface_response(prompt)
+        
+        if hf_response:
+            return f"[OpenAI API error, using free alternative] \n\n{hf_response}"
+        
         return f"Error with AI tutor: {str(e)}"
 
 # Function to analyze student errors
@@ -430,6 +477,36 @@ def process_exercises(exercises_dict):
         exercises_list = [exercises_dict[str(i)] for i in range(len(exercises_dict))]
         return exercises_list
     return exercises_dict
+
+# Function to get response from Hugging Face's free inference API as a backup
+def get_huggingface_response(prompt: str, max_length: int = 500) -> Optional[str]:
+    """Get response from Hugging Face's free inference API as a backup"""
+    try:
+        API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL_NAME}"
+        headers = {}
+        if HF_API_TOKEN:
+            headers["Authorization"] = f"Bearer {HF_API_TOKEN}"
+        
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": max_length,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "do_sample": True
+            }
+        }
+        
+        response = requests.post(API_URL, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            return response.json()[0]["generated_text"]
+        else:
+            print(f"Hugging Face API error: {response.status_code}, {response.text}")
+            return None
+    except Exception as e:
+        print(f"Error calling Hugging Face API: {str(e)}")
+        return None
 
 # Main Gradio interface
 with gr.Blocks(theme=gr.themes.Soft()) as interface:
@@ -829,51 +906,25 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
                 practice += f"**{i}. {ex['question']}**\n\n"
                 practice += f"   Answer: {ex['answer']}\n\n"
             
-            return f"{explanation}\n\n{examples}{practice}"
-        else:
-            return "No content available for this topic."
+            return explanation, examples, practice
+        return "Topic not found", "", ""
     
-    # Update this function to handle button clicks
-    def on_topic_button_click(topic):
-        # Update the selected topic
-        topic_state.set(topic)
-        
-        # Update the UI elements with the topic information
-        title = f"## {STUDY_GUIDE[topic]['title']}"
-        explanation = STUDY_GUIDE[topic]['explanation']
-        examples = "### Examples\n" + "\n".join([f"- {ex}" for ex in STUDY_GUIDE[topic]['examples']])
-        practice_md = "### Practice Exercises\n\n"
-        for i, ex in enumerate(STUDY_GUIDE[topic]['practice'], 1):
-            practice_md += f"**{i}. {ex['question']}**\n\n"
-            practice_md += f"   Answer: {ex['answer']}\n\n"
-        
-        # Update the output components
-        return title, explanation, examples, practice_md
-    
-    # Attach the button click events to the handler function
+    # Fix the topic button click handlers
+    topic_buttons_handlers = {}  # Store handlers separately
+
     for topic, button in topic_buttons.items():
+        # Create a closure function using a factory pattern
+        def make_handler_for_topic(selected_topic):
+            def handler():
+                result = update_topic_info(selected_topic)
+                return result[0], result[1], result[2], result[3], selected_topic
+            return handler
+        
+        # Store the handler function for this specific topic
+        topic_buttons_handlers[topic] = make_handler_for_topic(topic)
+        
+        # Connect the button to its specific handler function
         button.click(
-            on_topic_button_click,
-            inputs=[topic],
-            outputs=[title_output, explanation_output, examples_output, practice_output]
+            fn=topic_buttons_handlers[topic],
+            outputs=[title_output, explanation_output, examples_output, practice_output, topic_state]
         )
-    
-    # Add these event handlers:
-    generate_question_button.click(
-        lambda i: (QUIZZES[i]["question"], QUIZZES[i]["options"]),
-        inputs=index_dropdown, 
-        outputs=[question_output, options_output]
-    )
-
-    submit_answer_button.click(
-        run_quiz, 
-        inputs=[index_dropdown, user_answer_input], 
-        outputs=feedback_output
-    )
-
-    # Load the first question automatically when the interface starts
-    index_dropdown.change(
-        lambda i: (QUIZZES[i]["question"], QUIZZES[i]["options"]),
-        inputs=index_dropdown,
-        outputs=[question_output, options_output]
-    )
