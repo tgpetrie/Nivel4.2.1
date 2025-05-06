@@ -1,14 +1,19 @@
-import gradio as grimport os
+import os
 import gradio as gr
 import openai
 import json
 import random
 from dotenv import load_dotenv
 import gc
+from openai import OpenAI
+from flask import Flask, request, jsonify
+app = Flask(__name__)
 
 # Load environment variables from .env
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Full Study Guide Content
 STUDY_GUIDE = {
@@ -224,7 +229,8 @@ def generate_conversation_summary(history):
             {"role": "user", "content": f"Here's the conversation history between a student and the Spanish grammar tutor: {history}"}
         ]
         
-        response = openai.ChatCompletion.create(
+        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=messages,
             max_tokens=250
@@ -244,7 +250,8 @@ def generate_personalized_exercises(topic, difficulty):
             {"role": "user", "content": f"Generate {difficulty} level exercises for {topic}"}
         ]
         
-        response = openai.ChatCompletion.create(
+        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=messages,
             max_tokens=500
@@ -285,13 +292,16 @@ def ai_grammar_tutor(question, history):
             {"role": "user", "content": question}
         ]
         
-        response = openai.ChatCompletion.create(
+        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=messages,
             max_tokens=800
         )
         
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        
+        return content
     except Exception as e:
         return f"Error with AI tutor: {str(e)}"
 
@@ -306,7 +316,8 @@ def analyze_errors(student_text):
             {"role": "user", "content": f"Please check this Spanish text for errors: {student_text}"}
         ]
         
-        response = openai.ChatCompletion.create(
+        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=messages,
             max_tokens=500
@@ -333,7 +344,8 @@ def translate_text(text, direction):
             {"role": "user", "content": f"Translate this {source} text to {target}: {text}"}
         ]
         
-        response = openai.ChatCompletion.create(
+        client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=messages,
             max_tokens=500
@@ -608,7 +620,8 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
                 {"role": "user", "content": f"Generate {level} vocabulary list for the topic: {topic}"}
             ]
             
-            response = openai.ChatCompletion.create(
+            client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            response = client.chat.completions.create(
                 model="gpt-4",
                 messages=messages,
                 max_tokens=800
@@ -655,5 +668,31 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
     generate_practice_btn.click(get_custom_exercises, inputs=[topic_dropdown, practice_level], outputs=custom_practice_output)
 
 # Launch the interface
-if __name__ == "__main__":
-    interface.launch()
+interface.launch(share=True)
+
+@app.route("/generate-custom-exercise", methods=["POST"])
+def generate_custom_exercise():
+    data = request.get_json()
+    prompt = data.get("prompt", "Create a Spanish grammar exercise.")
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4-turbo",  # Replace with "gpt-3.5-turbo" if needed
+            messages=[
+                {"role": "system", "content": "You are a Spanish grammar tutor."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        reply = response.choices[0].message.content.strip()
+
+        return jsonify({
+            "question": prompt,
+            "answer": reply
+        })
+
+    except Exception as e:
+        return jsonify({
+            "question": "Unexpected error occurred.",
+            "answer": str(e)
+        })
