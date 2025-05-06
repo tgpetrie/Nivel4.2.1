@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spanish Grammar Tutor</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background-color: #f4f4f9; }
+    h1, h2 { color: #333; }
+    input, button {
+      padding: 0.5rem;
+      font-size: 1rem;
+      margin-top: 0.5rem;
+    }
+    button {
+      margin-left: 0.5rem;
+      cursor: pointer;
+    }
+    .exercise-block {
+      background: white;
+      border: 1px solid #ccc;
+      padding: 1rem;
+      margin-top: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .error-message { color: red; margin-top: 1rem; }
+    .loading { color: gray; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+
+  <h1>📝 Spanish Grammar Practice</h1>
+
+  <h2>Practice Exercises</h2>
+  <div id="predefined-exercises"></div>
+
+  <h2>Generate Custom Practice</h2>
+  <label for="prompt">Enter a custom prompt:</label><br>
+  <input type="text" id="prompt" placeholder="e.g., Create a subjunctive practice sentence">
+  <button onclick="generate()">Generate</button>
+
+  <div id="custom-exercises"></div>
+
+  <script>
+    const practiceData = [
+      {
+        question: "Completa con indicativo o subjuntivo: Pienso que _____ (ser) una buena idea.",
+        answer: "es (indicativo)"
+      },
+      {
+        question: "Completa con indicativo o subjuntivo: Dudo que él _____ (poder) hacerlo.",
+        answer: "pueda (subjuntivo)"
+      },
+      {
+        question: "Completa con indicativo o subjuntivo: Es importante que nosotros _____ (estudiar) para el examen.",
+        answer: "estudiemos (subjuntivo)"
+      }
+    ];
+
+    function renderPredefinedExercises() {
+      const container = document.getElementById("predefined-exercises");
+      container.innerHTML = "";
+
+      practiceData.forEach((item, index) => {
+        const div = document.createElement("div");
+        div.className = "exercise-block";
+        div.innerHTML = `
+          <strong>Exercise ${index + 1}:</strong><br>
+          <strong>Question:</strong> ${item.question}<br>
+          <strong>Answer:</strong> ${item.answer}
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    async function generate() {
+      const container = document.getElementById("custom-exercises");
+      const promptInput = document.getElementById("prompt");
+      const promptText = promptInput.value.trim();
+
+      if (!promptText) {
+        container.innerHTML = "<div class='error-message'>⚠️ Please enter a prompt.</div>";
+        return;
+      }
+
+      container.innerHTML = "<div class='loading'>⏳ Generating exercise...</div>";
+
+      try {
+        const response = await fetch("/generate-custom-exercise", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: promptText })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.answer && data.answer.startsWith("Model error")) {
+          renderError("⚠️ GPT model error: Please check model access or try again later.");
+        } else {
+          renderExercise(data.question, data.answer);
+        }
+      } catch (error) {
+        renderError(`❌ Error generating exercise: ${error.message}`);
+      }
+    }
+
+    function renderExercise(question, answer) {
+      const container = document.getElementById("custom-exercises");
+      container.innerHTML = `
+        <div class="exercise-block">
+          <strong>Question:</strong> ${question}<br/>
+          <strong>Answer:</strong> ${answer}
+        </div>
+      `;
+    }
+
+    function renderError(message) {
+      const container = document.getElementById("custom-exercises");
+      container.innerHTML = `<div class="error-message">${message}</div>`;
+    }
+
+    renderPredefinedExercises();
+  </script>
+
+</body>
+</html>

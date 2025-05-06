@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ title }}</title>
+  <style>
+    body { 
+      font-family: sans-serif; 
+      padding: 2rem; 
+      max-width: 800px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    h1 { color: #c33; }
+    h2 { color: #333; margin-top: 2rem; }
+    a { color: #0066cc; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .example {
+      background-color: #f9f9f9;
+      padding: 10px 15px;
+      margin: 10px 0;
+      border-left: 3px solid #c33;
+      border-radius: 3px;
+    }
+    .practice-item {
+      background-color: #f0f8ff;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 5px;
+    }
+    .answer {
+      font-weight: bold;
+      color: #006600;
+    }
+    .navigation {
+      margin-top: 30px;
+      padding-top: 15px;
+      border-top: 1px solid #eee;
+    }
+  </style>
+</head>
+<body>
+  <h1>{{ title }}</h1>
+  
+  <div class="explanation">
+    {{ explanation | safe }}
+  </div>
+  
+  <h2>Examples</h2>
+  <div class="examples">
+    {% for example in examples %}
+      <div class="example">{{ example }}</div>
+    {% endfor %}
+  </div>
+  
+  <h2>Practice Exercises</h2>
+  <div class="practice">
+    {% for item in practice %}
+      <div class="practice-item">
+        <p><strong>Question:</strong> {{ item.question }}</p>
+        <p class="answer"><strong>Answer:</strong> {{ item.answer }}</p>
+      </div>
+    {% endfor %}
+  </div>
+  
+  <div class="navigation">
+    <p><a href="/study-guides">← Back to all study guides</a> | <a href="/">Home</a></p>
+  </div>
+</body>
+</html>

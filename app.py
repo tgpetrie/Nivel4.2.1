@@ -701,9 +701,31 @@ def generate_custom_exercise():
 def index():
     return render_template("index.html")
 
+# Add these routes before the if __name__ == "__main__": block
+
+@app.route("/study-guides")
+def study_guides():
+    # Use your existing STUDY_GUIDE dictionary to get real topic names
+    topics = list(STUDY_GUIDE.keys())
+    return render_template("study_guides.html", topics=topics)
+
+@app.route("/study-guides/<topic>")
+def show_guide(topic):
+    # Check if the topic exists in your STUDY_GUIDE dictionary
+    if topic in STUDY_GUIDE:
+        guide_content = STUDY_GUIDE[topic]
+        return render_template("guide_detail.html", 
+                              topic=topic,
+                              title=guide_content["title"],
+                              explanation=guide_content["explanation"],
+                              examples=guide_content["examples"],
+                              practice=guide_content["practice"])
+    else:
+        return "Topic not found", 404
+
 if __name__ == "__main__":
     # Launch Gradio in a separate thread
     import threading
     threading.Thread(target=lambda: interface.launch(share=True, prevent_thread_lock=True)).start()
     # Run Flask app
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, host='0.0.0.0')
