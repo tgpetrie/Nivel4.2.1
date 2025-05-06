@@ -6,7 +6,7 @@ import random
 from dotenv import load_dotenv
 import gc
 from openai import OpenAI
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 app = Flask(__name__)
 
 # Load environment variables from .env
@@ -696,3 +696,14 @@ def generate_custom_exercise():
             "question": "Unexpected error occurred.",
             "answer": str(e)
         })
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+if __name__ == "__main__":
+    # Launch Gradio in a separate thread
+    import threading
+    threading.Thread(target=lambda: interface.launch(share=True, prevent_thread_lock=True)).start()
+    # Run Flask app
+    app.run(debug=True, port=5000)
