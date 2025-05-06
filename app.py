@@ -1,4 +1,4 @@
-import os
+import gradio as grimport os
 import gradio as gr
 import openai
 import json
@@ -230,7 +230,7 @@ def generate_conversation_summary(history):
             max_tokens=250
         )
         
-        return response["choices"][0]["message"]["content"]
+        return response.choices[0].message.content
     except Exception as e:
         return f"Error generating summary: {str(e)}"
 
@@ -291,7 +291,7 @@ def ai_grammar_tutor(question, history):
             max_tokens=800
         )
         
-        return response["choices"][0]["message"]["content"]
+        return response.choices[0].message.content
     except Exception as e:
         return f"Error with AI tutor: {str(e)}"
 
@@ -312,7 +312,7 @@ def analyze_errors(student_text):
             max_tokens=500
         )
         
-        return response["choices"][0]["message"]["content"]
+        return response.choices[0].message.content
     except Exception as e:
         return f"Error analyzing text: {str(e)}"
 
@@ -339,7 +339,7 @@ def translate_text(text, direction):
             max_tokens=500
         )
         
-        return response["choices"][0]["message"]["content"]
+        return response.choices[0].message.content
     except Exception as e:
         return f"Error translating text: {str(e)}"
 
