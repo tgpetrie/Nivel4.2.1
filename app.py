@@ -4,6 +4,7 @@ import openai
 import json
 import random
 from dotenv import load_dotenv
+import gc
 
 # Load environment variables from .env
 load_dotenv()
@@ -249,7 +250,7 @@ def generate_personalized_exercises(topic, difficulty):
             max_tokens=500
         )
         
-        content = response["choices"][0]["message"]["content"]
+        content = response.choices[0].message.content
         
         # Extract the JSON part from the response
         import re
@@ -349,6 +350,11 @@ def get_random_quiz(topic):
         if practice_items:
             return random.choice(practice_items)
     return {"question": "No quizzes available for this topic.", "answer": ""}
+
+# Memory optimization function
+def optimize_memory():
+    gc.collect()
+    return True
 
 # Main Gradio interface
 with gr.Blocks(theme=gr.themes.Soft()) as interface:
@@ -608,7 +614,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
                 max_tokens=800
             )
             
-            content = response["choices"][0]["message"]["content"]
+            content = response.choices[0].message.content
             
             # Extract the JSON part
             import re
