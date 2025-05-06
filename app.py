@@ -220,6 +220,42 @@ El imperativo se usa para dar órdenes, hacer peticiones o consejos.
     }
 }
 
+# Quiz Data
+QUIZZES = [
+    {
+        "question": "Transforma la frase en imperativo afirmativo: '¿Puedes cerrar la ventana?'",
+        "options": ["Cierra la ventana", "Cerraste la ventana", "Cerrando la ventana", "Cerrará la ventana"],
+        "answer": 0,
+        "explanation": "El imperativo afirmativo para 'tú' se forma eliminando la -s final del presente de indicativo."
+    },
+    {
+        "question": "Completa con la forma correcta del presente de subjuntivo: 'Espero que tú ______ (venir) mañana.'",
+        "options": ["vienes", "vengas", "venías", "vendrás"],
+        "answer": 1,
+        "explanation": "El subjuntivo se usa para expresar deseos. El verbo 'venir' en presente de subjuntivo para 'tú' es 'vengas'."
+    },
+    {
+        "question": "Elige la opción correcta: 'Este regalo es __ ti.'",
+        "options": ["por", "para", "de", "a"],
+        "answer": 1,
+        "explanation": "Se usa 'para' para indicar destinatario."
+    },
+    {
+        "question": "Clasifica la palabra 'computadora' según su acento.",
+        "options": ["Aguda", "Grave", "Esdrújula", "Sobresdrújula"],
+        "answer": 1,
+        "explanation": "La palabra 'computadora' es grave porque la sílaba tónica está en la penúltima posición."
+    }
+]
+
+# Function to handle quiz interaction
+def run_quiz(index, user_answer):
+    """Evaluates user input and provides feedback."""
+    quiz = QUIZZES[index]
+    correct = user_answer == quiz["answer"]
+    feedback = f"✅ Correcto! {quiz['explanation']}" if correct else f"❌ Incorrecto. {quiz['explanation']}"
+    return feedback
+
 # At the top of your app.py file, add a variable to track API usage
 API_CALLS_REMAINING = 100  # Set a reasonable limit
 
@@ -449,44 +485,66 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
         
         # Interactive Practice Tab
         with gr.Tab("🎯 Practice & Quiz"):
-            gr.Markdown("### Choose a Grammar Topic for Practice")
-            
-            with gr.Row():
-                quiz_topic_state = gr.State("Imperative")  # Store the selected topic
-                quiz_topics_grid = []
-                for i in range(0, len(STUDY_GUIDE), 3):  # 3 buttons per row
+            with gr.Tabs():
+                # Topic-based practice
+                with gr.Tab("Topic-based Practice"):
+                    gr.Markdown("### Choose a Grammar Topic for Practice")
+                    
                     with gr.Row():
-                        for j in range(min(3, len(STUDY_GUIDE) - i)):
-                            topic = list(STUDY_GUIDE.keys())[i+j]
-                            btn = gr.Button(STUDY_GUIDE[topic]["title"])
-                            quiz_topics_grid.append((topic, btn))
-            
-            with gr.Row():
-                quiz_btn = gr.Button("Get New Question")
-            
-            with gr.Row():
-                quiz_question = gr.Markdown("### Question will appear here...")
-            
-            with gr.Row():
-                quiz_answer_input = gr.Textbox(label="Your Answer")
-                check_answer_btn = gr.Button("Check Answer")
-            
-            with gr.Row():
-                quiz_feedback = gr.Markdown("Feedback will appear here...")
+                        quiz_topic_state = gr.State("Imperative")  # Store the selected topic
+                        quiz_topics_grid = []
+                        for i in range(0, len(STUDY_GUIDE), 3):  # 3 buttons per row
+                            with gr.Row():
+                                for j in range(min(3, len(STUDY_GUIDE) - i)):
+                                    topic = list(STUDY_GUIDE.keys())[i+j]
+                                    btn = gr.Button(STUDY_GUIDE[topic]["title"])
+                                    quiz_topics_grid.append((topic, btn))
+                    
+                    with gr.Row():
+                        quiz_btn = gr.Button("Get New Question")
+                    
+                    with gr.Row():
+                        quiz_question = gr.Markdown("### Question will appear here...")
+                    
+                    with gr.Row():
+                        quiz_answer_input = gr.Textbox(label="Your Answer")
+                        check_answer_btn = gr.Button("Check Answer")
+                    
+                    with gr.Row():
+                        quiz_feedback = gr.Markdown("Feedback will appear here...")
                 
-            with gr.Accordion("Grammar Challenge", open=False):
-                challenge_description = gr.Markdown("""
-                # 🏆 Weekly Grammar Challenge
-                Complete these exercises to test your understanding of Spanish grammar concepts.
-                """)
-                challenge_questions = gr.JSON({
-                    "questions": [
-                        {"id": 1, "text": "Completa con la forma correcta del verbo: Yo _____ (hablar) español todos los días."},
-                        {"id": 2, "text": "Elige la opción correcta: El libro está ____ la mesa. (a) en (b) sobre (c) de"},
-                        {"id": 3, "text": "Traduce: 'I would go if I had time.'"}
-                    ]
-                })
-                challenge_submit_btn = gr.Button("Submit Challenge Answers")
+                # Structured quiz system
+                with gr.Tab("Structured Quiz"):
+                    gr.Markdown("## 🇪🇸 Spanish Grammar Quiz 📖")
+                    gr.Markdown("### Answer the questions below and get immediate feedback!")
+
+                    index_dropdown = gr.Dropdown(
+                        choices=[i for i in range(len(QUIZZES))], 
+                        label="Select a Question",
+                        value=0
+                    )
+                    question_output = gr.Textbox(label="Question", interactive=False)
+                    options_output = gr.Radio(label="Options", choices=[""])
+                    user_answer_input = gr.Number(label="Enter your answer (0-3)", value=0, minimum=0, maximum=3, step=1)
+                    feedback_output = gr.Textbox(label="Feedback", interactive=False)
+
+                    generate_question_button = gr.Button("🔍 Load Question")
+                    submit_answer_button = gr.Button("✅ Submit Answer")
+
+                # Grammar Challenge
+                with gr.Accordion("Weekly Grammar Challenge", open=False):
+                    challenge_description = gr.Markdown("""
+                    # 🏆 Weekly Grammar Challenge
+                    Complete these exercises to test your understanding of Spanish grammar concepts.
+                    """)
+                    challenge_questions = gr.JSON({
+                        "questions": [
+                            {"id": 1, "text": "Completa con la forma correcta del verbo: Yo _____ (hablar) español todos los días."},
+                            {"id": 2, "text": "Elige la opción correcta: El libro está ____ la mesa. (a) en (b) sobre (c) de"},
+                            {"id": 3, "text": "Traduce: 'I would go if I had time.'"}
+                        ]
+                    })
+                    challenge_submit_btn = gr.Button("Submit Challenge Answers")
         
         # AI Tutor Tab
         with gr.Tab("🤖 AI Tutor"):
@@ -771,185 +829,51 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
                 practice += f"**{i}. {ex['question']}**\n\n"
                 practice += f"   Answer: {ex['answer']}\n\n"
             
-            return explanation, examples, practice
+            return f"{explanation}\n\n{examples}{practice}"
         else:
-            return "", "", ""
+            return "No content available for this topic."
     
-    # Connect event handlers
-    quiz_btn.click(
-        fn=lambda t: update_quiz_question(t),
-        inputs=quiz_topic_state,
-        outputs=[quiz_question, quiz_feedback]
-    )
-
-    check_answer_btn.click(
-        fn=check_quiz_answer,
-        inputs=[quiz_topic_state, quiz_answer_input, quiz_question],
-        outputs=quiz_feedback
-    )
-    quiz_answer_input.submit(
-        fn=check_quiz_answer,
-        inputs=[quiz_topic_state, quiz_answer_input, quiz_question],
-        outputs=quiz_feedback
-    )
-
-    submit_btn.click(handle_chat_submit, inputs=[user_input, chatbot, conversation_history], outputs=[user_input, chatbot, conversation_history])
-    user_input.submit(handle_chat_submit, inputs=[user_input, chatbot, conversation_history], outputs=[user_input, chatbot, conversation_history])
-    clear_btn.click(clear_chat_history, outputs=[chatbot, conversation_history])
+    # Update this function to handle button clicks
+    def on_topic_button_click(topic):
+        # Update the selected topic
+        topic_state.set(topic)
+        
+        # Update the UI elements with the topic information
+        title = f"## {STUDY_GUIDE[topic]['title']}"
+        explanation = STUDY_GUIDE[topic]['explanation']
+        examples = "### Examples\n" + "\n".join([f"- {ex}" for ex in STUDY_GUIDE[topic]['examples']])
+        practice_md = "### Practice Exercises\n\n"
+        for i, ex in enumerate(STUDY_GUIDE[topic]['practice'], 1):
+            practice_md += f"**{i}. {ex['question']}**\n\n"
+            practice_md += f"   Answer: {ex['answer']}\n\n"
+        
+        # Update the output components
+        return title, explanation, examples, practice_md
     
-    summary_btn.click(get_session_summary, inputs=conversation_history, outputs=session_summary)
-    
-    correction_btn.click(handle_error_analysis, inputs=correction_input, outputs=correction_output)
-    
-    translation_btn.click(handle_translation, inputs=[translation_input, translation_direction], outputs=translation_output)
-    
-    vocab_btn.click(generate_vocabulary, inputs=[vocab_topic, vocab_level], outputs=vocab_output)
-    
-    # Remove this line:
-    # topic_dropdown.change(update_topic_info, inputs=topic_dropdown, outputs=[title_output, explanation_output, examples_output, practice_output])
-
-    # Also fix the generate_practice_btn click handler:
-    # Change this:
-    # generate_practice_btn.click(get_custom_exercises, inputs=[topic_dropdown, practice_level], outputs=custom_practice_output)
-
-    # To this (using State to store current topic):
-    topic_state = gr.State("Imperative")  # Default topic
-    generate_practice_btn.click(get_custom_exercises, inputs=[topic_state, practice_level], outputs=custom_practice_output)
-
-    # And modify your button click handlers to update the state:
+    # Attach the button click events to the handler function
     for topic, button in topic_buttons.items():
-        # Create custom function for this specific topic
-        def make_click_handler(t):
-            def click_handler():
-                return update_topic_info(t), t
-            return click_handler
-        
-        # Connect the button to both update content and state
         button.click(
-            fn=make_click_handler(topic),
-            outputs=[title_output, explanation_output, examples_output, practice_output, topic_state]
+            on_topic_button_click,
+            inputs=[topic],
+            outputs=[title_output, explanation_output, examples_output, practice_output]
         )
     
-    # Connect quiz topic buttons
-    for topic, btn in quiz_topics_grid:
-        btn.click(
-            fn=lambda t=topic: (t, update_quiz_question(t)[0], ""),
-            outputs=[quiz_topic_state, quiz_question, quiz_feedback]
-        )
-
-    # Update the quiz button click handler
-    quiz_btn.click(
-        fn=lambda t: update_quiz_question(t),
-        inputs=quiz_topic_state,
-        outputs=[quiz_question, quiz_feedback]
+    # Add these event handlers:
+    generate_question_button.click(
+        lambda i: (QUIZZES[i]["question"], QUIZZES[i]["options"]),
+        inputs=index_dropdown, 
+        outputs=[question_output, options_output]
     )
 
-    # Update the check answer button
-    check_answer_btn.click(
-        fn=check_quiz_answer,
-        inputs=[quiz_topic_state, quiz_answer_input, quiz_question],
-        outputs=quiz_feedback
-    )
-    quiz_answer_input.submit(
-        fn=check_quiz_answer,
-        inputs=[quiz_topic_state, quiz_answer_input, quiz_question],
-        outputs=quiz_feedback
+    submit_answer_button.click(
+        run_quiz, 
+        inputs=[index_dropdown, user_answer_input], 
+        outputs=feedback_output
     )
 
-# Launch the interface
-interface.launch(share=True)
-
-@app.route("/generate-custom-exercise", methods=["POST"])
-def generate_custom_exercise():
-    data = request.get_json()
-    prompt = data.get("prompt", "Create a Spanish grammar exercise.")
-    
-    # Debug log
-    print(f"Received prompt: {prompt}")
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a Spanish grammar tutor. Generate a grammar exercise with a clear question and answer."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7
-        )
-        reply = response.choices[0].message.content.strip()
-        
-        # Split the response into question and answer if possible
-        parts = reply.split("Answer:", 1)
-        if len(parts) > 1:
-            question = parts[0].strip()
-            answer = parts[1].strip()
-        else:
-            question = prompt
-            answer = reply
-        
-        print("Generated response successfully")
-        return jsonify({
-            "question": question,
-            "answer": answer
-        })
-
-    except Exception as e:
-        print(f"Error in generate_custom_exercise: {str(e)}")
-        return jsonify({
-            "question": "Unexpected error occurred.",
-            "answer": str(e)
-        })
-
-@app.route("/")
-def index():
-    try:
-        print("Rendering index.html template")
-        return render_template("index.html")
-    except Exception as e:
-        print(f"Error rendering index: {str(e)}")
-        return f"Error rendering template: {str(e)}"
-
-@app.route("/study-guides")
-def study_guides():
-    try:
-        topics = list(STUDY_GUIDE.keys())
-        print(f"Available topics: {topics}")  # Debug print
-        print("Rendering study_guides.html template")
-        return render_template("study_guides.html", topics=topics)
-    except Exception as e:
-        print(f"Error rendering study_guides: {str(e)}")
-        return f"Error rendering template: {str(e)}"
-
-@app.route("/study-guides/<topic>")
-def show_guide(topic):
-    # Check if the topic exists in your STUDY_GUIDE dictionary
-    if topic in STUDY_GUIDE:
-        guide_content = STUDY_GUIDE[topic]
-        return render_template("guide_detail.html", 
-                              topic=topic,
-                              title=guide_content["title"],
-                              explanation=guide_content["explanation"],
-                              examples=guide_content["examples"],
-                              practice=guide_content["practice"])
-    else:
-        return "Topic not found", 404
-
-# New function to provide predefined responses
-def get_predefined_response(question):
-    # Check if the question matches any keywords
-    question_lower = question.lower()
-    
-    if "imperativo" in question_lower or "command" in question_lower:
-        return STUDY_GUIDE["Imperative"]["explanation"]
-    elif "subjuntivo" in question_lower or "subjunctive" in question_lower:
-        return STUDY_GUIDE["Subjunctive"]["explanation"]
-    # Add more matches here
-    
-    return None  # No match found, will fall back to API or default message
-
-if __name__ == "__main__":
-    # Launch Gradio in a separate thread
-    import threading
-    threading.Thread(target=lambda: interface.launch(share=True, prevent_thread_lock=True)).start()
-    # Run Flask app
-    app.run(debug=True, port=5000)
+    # Load the first question automatically when the interface starts
+    index_dropdown.change(
+        lambda i: (QUIZZES[i]["question"], QUIZZES[i]["options"]),
+        inputs=index_dropdown,
+        outputs=[question_output, options_output]
+    )
