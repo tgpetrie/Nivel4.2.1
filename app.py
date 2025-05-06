@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 import gc
 from openai import OpenAI
 from flask import Flask, request, jsonify, render_template
-app = Flask(__name__)
+app = Flask(__name__, 
+            template_folder='templates')  # Explicitly set the template folder
 
 # Load environment variables from .env
 load_dotenv()
@@ -219,6 +220,9 @@ El imperativo se usa para dar órdenes, hacer peticiones o consejos.
     }
 }
 
+# At the top of your app.py file, add a variable to track API usage
+API_CALLS_REMAINING = 100  # Set a reasonable limit
+
 # Function to generate conversation summary
 def generate_conversation_summary(history):
     try:
@@ -231,7 +235,7 @@ def generate_conversation_summary(history):
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages,
             max_tokens=250
         )
@@ -242,9 +246,13 @@ def generate_conversation_summary(history):
 
 # Function to get personalized practice exercises
 def generate_personalized_exercises(topic, difficulty):
+    global API_CALLS_REMAINING
+    if API_CALLS_REMAINING <= 0:
+        return [{"question": "API quota exceeded. Please try again later.", "answer": "N/A"}]
+    
     try:
         messages = [
-            {"role": "system", "content": f"""You are a Spanish grammar tutor specializing in {topic}. 
+            {"role": "system", content": f"""You are a Spanish grammar tutor specializing in {topic}. 
             Create {3} personalized practice exercises at {difficulty} difficulty level. 
             Format the response as a JSON array with 'question' and 'answer' keys."""},
             {"role": "user", "content": f"Generate {difficulty} level exercises for {topic}"}
@@ -252,7 +260,7 @@ def generate_personalized_exercises(topic, difficulty):
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages,
             max_tokens=500
         )
@@ -266,9 +274,10 @@ def generate_personalized_exercises(topic, difficulty):
             content = json_match.group(0)
         
         exercises = json.loads(content)
+        API_CALLS_REMAINING -= 1  # Decrement the counter
         return exercises
     except Exception as e:
-        return [{"question": f"Error generating exercises: {str(e)}", "answer": "N/A"}]
+        return [{"question": f"Error: {str(e)}", "answer": "N/A"}]
 
 # Function to get AI grammar tutor response
 def ai_grammar_tutor(question, history):
@@ -294,7 +303,7 @@ def ai_grammar_tutor(question, history):
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",  # Changed from "gpt-4"
             messages=messages,
             max_tokens=800
         )
@@ -318,7 +327,7 @@ def analyze_errors(student_text):
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages,
             max_tokens=500
         )
@@ -346,7 +355,7 @@ def translate_text(text, direction):
         
         client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages,
             max_tokens=500
         )
@@ -368,6 +377,15 @@ def optimize_memory():
     gc.collect()
     return True
 
+# If you're getting data like {"0": {...}, "1": {...}}
+# Convert it to a proper list
+def process_exercises(exercises_dict):
+    # Convert dict with numeric keys to list
+    if isinstance(exercises_dict, dict) and all(k.isdigit() for k in exercises_dict.keys()):
+        exercises_list = [exercises_dict[str(i)] for i in range(len(exercises_dict))]
+        return exercises_list
+    return exercises_dict
+
 # Main Gradio interface
 with gr.Blocks(theme=gr.themes.Soft()) as interface:
     # Session state for conversation history
@@ -380,13 +398,23 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
     with gr.Tabs():
         # Study Guide Tab
         with gr.Tab("📖 Study Guide"):
+            # Replace dropdown with buttons for each grammar topic
             with gr.Row():
-                topic_dropdown = gr.Dropdown(
-                    choices=list(STUDY_GUIDE.keys()), 
-                    label="Select a Grammar Topic",
-                    value="Imperative"
-                )
+                gr.Markdown("### Select a Grammar Topic")
             
+            with gr.Row():
+                # Create a horizontal button layout for topic selection
+                topic_buttons = {}
+                for i, topic in enumerate(STUDY_GUIDE.keys()):
+                    if i % 4 == 0:  # Start a new row after every 4 buttons
+                        with gr.Row():
+                            for j in range(min(4, len(STUDY_GUIDE) - i)):
+                                current_topic = list(STUDY_GUIDE.keys())[i+j]
+                                topic_buttons[current_topic] = gr.Button(
+                                    STUDY_GUIDE[current_topic]["title"], 
+                                    variant="primary" if j==0 else "secondary"
+                                )
+    
             with gr.Row():
                 with gr.Column(scale=2):
                     title_output = gr.Markdown("## Topic Title")
@@ -396,7 +424,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
                     examples_output = gr.Markdown("### Examples")
             
             with gr.Row():
-                practice_output = gr.JSON(label="Practice Exercises")
+                practice_output = gr.Markdown(label="Practice Exercises")
                 
             with gr.Row():
                 practice_level = gr.Radio(
@@ -407,16 +435,23 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
                 generate_practice_btn = gr.Button("📝 Generate Custom Practice")
             
             with gr.Row():
-                custom_practice_output = gr.JSON(label="Custom Practice Exercises")
+                custom_practice_output = gr.Markdown(label="Custom Practice Exercises")
         
         # Interactive Practice Tab
         with gr.Tab("🎯 Practice & Quiz"):
+            gr.Markdown("### Choose a Grammar Topic for Practice")
+            
             with gr.Row():
-                quiz_topic = gr.Dropdown(
-                    choices=list(STUDY_GUIDE.keys()), 
-                    label="Select Topic for Quiz",
-                    value="Imperative"
-                )
+                quiz_topic_state = gr.State("Imperative")  # Store the selected topic
+                quiz_topics_grid = []
+                for i in range(0, len(STUDY_GUIDE), 3):  # 3 buttons per row
+                    with gr.Row():
+                        for j in range(min(3, len(STUDY_GUIDE) - i)):
+                            topic = list(STUDY_GUIDE.keys())[i+j]
+                            btn = gr.Button(STUDY_GUIDE[topic]["title"])
+                            quiz_topics_grid.append((topic, btn))
+            
+            with gr.Row():
                 quiz_btn = gr.Button("Get New Question")
             
             with gr.Row():
@@ -550,9 +585,15 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
             title = f"## {STUDY_GUIDE[topic]['title']}"
             explanation = STUDY_GUIDE[topic]['explanation']
             examples = "### Examples\n" + "\n".join([f"- {ex}" for ex in STUDY_GUIDE[topic]['examples']])
-            practice = STUDY_GUIDE[topic]['practice']
-            return title, explanation, examples, practice
-        return "## Topic Not Found", "Please select a valid topic.", "### No examples available", []
+            
+            # Format practice as Markdown instead of JSON
+            practice_md = "### Practice Exercises\n\n"
+            for i, ex in enumerate(STUDY_GUIDE[topic]['practice'], 1):
+                practice_md += f"**{i}. {ex['question']}**\n\n"
+                practice_md += f"   Answer: {ex['answer']}\n\n"
+            
+            return title, explanation, examples, practice_md
+        return "## Topic Not Found", "Please select a valid topic.", "### No examples available", ""
     
     def update_quiz_question(topic):
         quiz = get_random_quiz(topic)
@@ -622,7 +663,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
             
             client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             response = client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=messages,
                 max_tokens=800
             )
@@ -644,7 +685,62 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
             return [["Error", f"Error generating vocabulary: {str(e)}", ""]]
     
     def get_custom_exercises(topic, level):
-        return generate_personalized_exercises(topic, level)
+        try:
+            exercises = generate_personalized_exercises(topic, level)
+            # Format exercises as Markdown
+            exercises_md = "### Custom Practice Exercises\n\n"
+            for i, ex in enumerate(exercises, 1):
+                exercises_md += f"**{i}. {ex['question']}**\n\n"
+                exercises_md += f"   Answer: {ex['answer']}\n\n"
+            return exercises_md
+        except Exception as e:
+            # Fallback to pre-defined exercises if API quota exceeded
+            exercises_md = "### Pre-defined Practice Exercises\n\n"
+            exercises_md += "Sorry, custom exercises couldn't be generated right now. Here are some standard exercises:\n\n"
+            
+            # Use existing exercises from the study guide
+            for i, ex in enumerate(STUDY_GUIDE[topic]["practice"], 1):
+                exercises_md += f"**{i}. {ex['question']}**\n\n"
+                exercises_md += f"   Answer: {ex['answer']}\n\n"
+            
+            return exercises_md
+    
+    def display_practice_exercises(topic):
+        """Display practice exercises for the selected topic"""
+        if topic in STUDY_GUIDE:
+            exercises = STUDY_GUIDE[topic]["practice"]
+            # Format exercises for better display
+            formatted_exercises = []
+            for i, exercise in enumerate(exercises, 1):
+                formatted = f"**Exercise {i}:**\n\n"
+                formatted += f"Question: {exercise['question']}\n\n"
+                formatted += f"Answer: {exercise['answer']}\n\n"
+                formatted += "---\n"
+                formatted_exercises.append(formatted)
+            
+            return "\n".join(formatted_exercises)
+        else:
+            return "No exercises available for this topic."
+    
+    def display_topic_content(topic):
+        """Return all content for a specific topic"""
+        if topic in STUDY_GUIDE:
+            explanation = STUDY_GUIDE[topic]["explanation"]
+            
+            # Format examples
+            examples = "### Examples\n\n"
+            for ex in STUDY_GUIDE[topic]["examples"]:
+                examples += f"- {ex}\n"
+            
+            # Format practice exercises
+            practice = "### Practice Exercises\n\n"
+            for i, ex in enumerate(STUDY_GUIDE[topic]["practice"], 1):
+                practice += f"**{i}. {ex['question']}**\n\n"
+                practice += f"   Answer: {ex['answer']}\n\n"
+            
+            return explanation, examples, practice
+        else:
+            return "", "", ""
     
     # Connect event handlers
     topic_dropdown.change(update_topic_info, inputs=topic_dropdown, outputs=[title_output, explanation_output, examples_output, practice_output])
@@ -652,6 +748,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
     quiz_topic.change(update_quiz_question, inputs=quiz_topic, outputs=[quiz_question, quiz_feedback])
     quiz_btn.click(update_quiz_question, inputs=quiz_topic, outputs=[quiz_question, quiz_feedback])
     check_answer_btn.click(check_quiz_answer, inputs=[quiz_topic, quiz_answer_input, quiz_question], outputs=quiz_feedback)
+    quiz_answer_input.submit(check_quiz_answer, inputs=[quiz_topic, quiz_answer_input, quiz_question], outputs=quiz_feedback)
     
     submit_btn.click(handle_chat_submit, inputs=[user_input, chatbot, conversation_history], outputs=[user_input, chatbot, conversation_history])
     user_input.submit(handle_chat_submit, inputs=[user_input, chatbot, conversation_history], outputs=[user_input, chatbot, conversation_history])
@@ -666,6 +763,39 @@ with gr.Blocks(theme=gr.themes.Soft()) as interface:
     vocab_btn.click(generate_vocabulary, inputs=[vocab_topic, vocab_level], outputs=vocab_output)
     
     generate_practice_btn.click(get_custom_exercises, inputs=[topic_dropdown, practice_level], outputs=custom_practice_output)
+    
+    # Connect each topic button to update the content
+    for topic, button in topic_buttons.items():
+        button.click(
+            fn=lambda t=topic: update_topic_info(t),
+            outputs=[title_output, explanation_output, examples_output, practice_output]
+        )
+    
+    # Connect quiz topic buttons
+    for topic, btn in quiz_topics_grid:
+        btn.click(
+            fn=lambda t=topic: (t, update_quiz_question(t)[0], ""),
+            outputs=[quiz_topic_state, quiz_question, quiz_feedback]
+        )
+
+    # Update the quiz button click handler
+    quiz_btn.click(
+        fn=lambda t: update_quiz_question(t),
+        inputs=quiz_topic_state,
+        outputs=[quiz_question, quiz_feedback]
+    )
+
+    # Update the check answer button
+    check_answer_btn.click(
+        fn=check_quiz_answer,
+        inputs=[quiz_topic_state, quiz_answer_input, quiz_question],
+        outputs=quiz_feedback
+    )
+    quiz_answer_input.submit(
+        fn=check_quiz_answer,
+        inputs=[quiz_topic_state, quiz_answer_input, quiz_question],
+        outputs=quiz_feedback
+    )
 
 # Launch the interface
 interface.launch(share=True)
@@ -674,24 +804,38 @@ interface.launch(share=True)
 def generate_custom_exercise():
     data = request.get_json()
     prompt = data.get("prompt", "Create a Spanish grammar exercise.")
+    
+    # Debug log
+    print(f"Received prompt: {prompt}")
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4-turbo",  # Replace with "gpt-3.5-turbo" if needed
+            model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a Spanish grammar tutor."},
+                {"role": "system", "content": "You are a Spanish grammar tutor. Generate a grammar exercise with a clear question and answer."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7
         )
         reply = response.choices[0].message.content.strip()
-
+        
+        # Split the response into question and answer if possible
+        parts = reply.split("Answer:", 1)
+        if len(parts) > 1:
+            question = parts[0].strip()
+            answer = parts[1].strip()
+        else:
+            question = prompt
+            answer = reply
+        
+        print("Generated response successfully")
         return jsonify({
-            "question": prompt,
-            "answer": reply
+            "question": question,
+            "answer": answer
         })
 
     except Exception as e:
+        print(f"Error in generate_custom_exercise: {str(e)}")
         return jsonify({
             "question": "Unexpected error occurred.",
             "answer": str(e)
@@ -699,15 +843,23 @@ def generate_custom_exercise():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
-
-# Add these routes before the if __name__ == "__main__": block
+    try:
+        print("Rendering index.html template")
+        return render_template("index.html")
+    except Exception as e:
+        print(f"Error rendering index: {str(e)}")
+        return f"Error rendering template: {str(e)}"
 
 @app.route("/study-guides")
 def study_guides():
-    # Use your existing STUDY_GUIDE dictionary to get real topic names
-    topics = list(STUDY_GUIDE.keys())
-    return render_template("study_guides.html", topics=topics)
+    try:
+        topics = list(STUDY_GUIDE.keys())
+        print(f"Available topics: {topics}")  # Debug print
+        print("Rendering study_guides.html template")
+        return render_template("study_guides.html", topics=topics)
+    except Exception as e:
+        print(f"Error rendering study_guides: {str(e)}")
+        return f"Error rendering template: {str(e)}"
 
 @app.route("/study-guides/<topic>")
 def show_guide(topic):
@@ -728,4 +880,4 @@ if __name__ == "__main__":
     import threading
     threading.Thread(target=lambda: interface.launch(share=True, prevent_thread_lock=True)).start()
     # Run Flask app
-    app.run(debug=True, port=5000, host='0.0.0.0')
+    app.run(debug=True, port=5000)
